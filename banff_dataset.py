@@ -1,6 +1,5 @@
 import os
 import typing
-from typing import Tuple
 
 import h5py
 import torch
@@ -11,7 +10,6 @@ import pandas as pd
 ATTRIBUTES = ["bx_tma", "bx_atn", "bx_g", "bx_cg", "bx_mm", "bx_i",
               "bx_t", "bx_ti", "bx_ifta", "bx_iifta", "bx_tifta",
               "bx_ptc", "bx_v", "bx_cv", "bx_ah"]
-
 
 # |-------------------------------------------------------------------|
 # |               Description of the attributes                       |
@@ -34,7 +32,7 @@ ATTRIBUTES = ["bx_tma", "bx_atn", "bx_g", "bx_cg", "bx_mm", "bx_i",
 # |-------------------------------------------------------------------|
 
 
-def collate(batch: typing.List) -> tuple[Tensor, Tensor, Tensor]:
+def collate(batch: typing.List) -> typing.Tuple[Tensor, Tensor, Tensor]:
     """
     Collate function for the Banff dataset. This function is used by the PyTorch DataLoader.
     :param batch: A list of tuples containing the features, coordinates and labels.
@@ -64,7 +62,7 @@ class BanffDataset(Dataset):
         self.banff.set_index("PATIENT_ID", inplace=True)
         self.data_dir = data_dir
 
-    def __getitem__(self, idx) -> Tuple[Tensor, Tensor, Tensor]:
+    def __getitem__(self, idx) -> typing.Tuple[Tensor, Tensor, Tensor]:
         patient_id = self.banff.index[idx]
         scores = self.banff.loc[patient_id, ATTRIBUTES].values
 
@@ -75,7 +73,11 @@ class BanffDataset(Dataset):
 
         features = torch.from_numpy(features)
         scores = torch.from_numpy(scores)
-        coords = torch.from_numpy(coords)
+
+        # Load coordinates as float32 and normalize them to be in the range [0, 1]
+        coords = torch.from_numpy(coords).float()
+        coords[:, 0] = (coords[:, 0] - coords[:, 0].min()) / (coords[:, 0].max() - coords[:, 0].min())
+        coords[:, 1] = (coords[:, 1] - coords[:, 1].min()) / (coords[:, 1].max() - coords[:, 1].min())
 
         return features, coords, scores
 
