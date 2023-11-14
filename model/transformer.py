@@ -5,7 +5,7 @@ from typing import Type
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Block
-from timm.layers import Mlp
+from timm.models.layers import Mlp
 
 
 class Transformer(nn.Module):
