@@ -1,4 +1,5 @@
 import math
+import typing
 from functools import partial
 from typing import Type
 
@@ -21,6 +22,7 @@ class Transformer(nn.Module):
             qk_norm: bool = False,
             proj_drop_rate: float = 0.,
             attn_drop_rate: float = 0.,
+            positional_encoding: Type[nn.Module] = None,
     ):
         super().__init__()
 
@@ -39,20 +41,34 @@ class Transformer(nn.Module):
                   act_layer=nn.GELU, mlp_layer=Mlp) for _ in range(depth)])
         self.head = nn.Sequential(nn.Linear(self.embedding_dim, num_classes), nn.ReLU())
 
-    def forward_features(self, x, coords=None):
+        self.positional_encoding = positional_encoding
+
+    def forward_features(self, x: torch.Tensor,
+                         coords: typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, torch.Tensor]]) -> torch.Tensor:
         batch, n_patches, input_size = x.shape
 
         x = self.projection(x)
+
+        if self.positional_encoding is not None:
+            if isinstance(coords, tuple):
+                x = x + self.positional_encoding(coords[0], coords[1])
+            else:
+                x = x + self.positional_encoding(coords)
+
         x = torch.cat((self.cls_token.expand(batch, -1, -1), x), dim=1)
         x = self.transformer(x)
         x = self.norm(x)
+
         return x
 
     def forward_head(self, x):
         x = x[:, 0]
+
         return self.head(x)
 
-    def forward(self, x, coords):
+    def forward(self, x: torch.Tensor, coords: typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, torch.Tensor]]) \
+            -> torch.Tensor:
         x = self.forward_features(x, coords)
         x = self.forward_head(x)
+
         return x
