@@ -28,7 +28,7 @@ from model.utils import load_model_from_config
               help="The list of slides to use as training set.")
 @click.option("--validation-set-list", type=click.Path(exists=True),
               help="The list of slides to use as validation set.")
-@click.option("--model-checkpoint", type=click.Path(exists=True), default="", required=False,
+@click.option("--model-checkpoint", type=click.Path(exists=False), default="", required=False,
               help="The checkpoint of the model to load.")
 @click.option("--device", type=torch.device, default="cuda:0", help="The device on which to run the training.")
 def run(features_dir: str, banff_scores_csv: str, save_checkpoints: bool, checkpoints_dir: str, log_dir: str,
@@ -58,9 +58,9 @@ def run(features_dir: str, banff_scores_csv: str, save_checkpoints: bool, checkp
 
     # Load the Banff dataset
     banff_dataset_train = BanffDataset(data_dir=features_dir, banff_scores_csv_filepath=banff_scores_csv,
-                                       device=device, slides_to_load=train_slides)
+                                       slides_to_load=train_slides)
     banff_dataset_val = BanffDataset(data_dir=features_dir, banff_scores_csv_filepath=banff_scores_csv,
-                                     device=device, slides_to_load=val_slides)
+                                     slides_to_load=val_slides)
 
     # Define the data sampling
     train_loader, val_loader = data_sampling(training_set=banff_dataset_train, validation_set=banff_dataset_val,

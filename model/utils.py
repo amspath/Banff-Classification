@@ -1,7 +1,7 @@
 import typing
 
-from transformer import Transformer
-from positional_encoding import *
+from model.transformer import Transformer
+from model.positional_encoding import *
 
 
 def load_model_from_config(model_config: typing.Dict[str, typing.Any]) -> Transformer:
@@ -17,6 +17,8 @@ def load_model_from_config(model_config: typing.Dict[str, typing.Any]) -> Transf
         positional_encoding = PositionalEncoding
     elif positional_encoding == "learned":
         positional_encoding = LearnedPositionalEncoding
+    elif positional_encoding == "none":
+        positional_encoding = None
     else:
         raise ValueError(f"Unknown positional encoding {positional_encoding}")
 

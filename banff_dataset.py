@@ -2,6 +2,7 @@ import os
 import typing
 
 import h5py
+import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -39,22 +40,21 @@ CONTINUOUS_ATTRIBUTES = ["bx_ti", "bx_ifta"]  # 2 attributes with continuous val
 # |-------------------------------------------------------------------|
 
 
-def transform_scores(scores: pd.Series, device: torch.device) -> typing.List:
+def transform_scores(scores: pd.Series) -> typing.List:
     """
     Apply the following transformations: perform the one-hot encoding of the ordinal attributes, making sure to
     add a new value (-1) for attributes which may present missing values; rescale the continuous attributes to [0,1];
     leave the binary attributes as they are.
     :param scores: the Banff scores to transform (Pandas Dataframe)
-    :param device: the device on which to store the transformed scores
     :return: the transformed Banff scores (Numpy array)
     """
     labels = []
     # Iterate through all the attributes
     for attribute in ATTRIBUTES:
         if attribute in BINARY_ATTRIBUTES:
-            labels.append(int(scores[attribute]))
+            labels.append(torch.tensor([int(scores[attribute])]))
         elif attribute in CONTINUOUS_ATTRIBUTES:
-            labels.append(scores[attribute] / 100)
+            labels.append(torch.tensor([scores[attribute] / 100]))
         elif attribute in ORDINAL_ATTRIBUTES:
             # If the attribute is ordinal, we need to perform the one-hot encoding
             # First, we need to check if the attribute can have missing values
@@ -64,9 +64,9 @@ def transform_scores(scores: pd.Series, device: torch.device) -> typing.List:
                 if scores[attribute] is None:
                     scores[attribute] = -1
 
-                labels.append(torch.eye(5, dtype=torch.long, device=device)[int(scores[attribute]) + 1])
+                labels.append(torch.eye(5, dtype=torch.long)[int(scores[attribute]) + 1])
             else:
-                labels.append(torch.eye(4, dtype=torch.long, device=device)[int(scores[attribute])])
+                labels.append(torch.eye(4, dtype=torch.long)[int(scores[attribute])])
         else:
             raise ValueError(f"Unknown attribute kind {attribute}")
 
@@ -99,8 +99,7 @@ class BanffDataset(Dataset):
     Dataset class for the Banff lesion scores.
     """
 
-    def __init__(self, data_dir: str, banff_scores_csv_filepath: str, device: torch.device,
-                 slides_to_load: typing.List[str] = None):
+    def __init__(self, data_dir: str, banff_scores_csv_filepath: str, slides_to_load: typing.List[str] = None):
         """
         :param data_dir: The directory containing the feature bags, i.e. the h5 files of the slides.
         :param banff_scores_csv_filepath: The path to the csv file containing the Banff scores.
@@ -108,28 +107,26 @@ class BanffDataset(Dataset):
         self.banff = pd.read_csv(banff_scores_csv_filepath, delimiter=",")
         self.banff.set_index("PATIENT_ID", inplace=True)
         self.data_dir = data_dir
-        self.device = device
 
         if slides_to_load is not None:
             self.banff = self.banff.loc[slides_to_load]
 
-    def __getitem__(self, idx) -> typing.Tuple[Tensor, Tensor, Tensor]:
+    def __getitem__(self, idx) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
         patient_id = self.banff.index[idx]
         scores = self.banff.loc[patient_id, ATTRIBUTES]
-        scores = transform_scores(scores, self.device)
+        scores = transform_scores(scores)
 
         full_path = get_feature_bag_path(self.data_dir, patient_id)
         with h5py.File(full_path, "r") as hdf5_file:
             features = hdf5_file["features"][:]
             coords = hdf5_file["coords"][:]
 
-        features = torch.from_numpy(features)
-        scores = torch.from_numpy(scores)
+        features = torch.from_numpy(np.expand_dims(features, axis=0)).float()
 
         # Load coordinates as float32 and normalize them to be in the range [0, 1]
-        coords = torch.from_numpy(coords).float()
-        coords[:, 0] = (coords[:, 0] - coords[:, 0].min()) / (coords[:, 0].max() - coords[:, 0].min())
+        coords = torch.from_numpy(np.expand_dims(coords, axis=0)).float()
         coords[:, 1] = (coords[:, 1] - coords[:, 1].min()) / (coords[:, 1].max() - coords[:, 1].min())
+        coords[:, 2] = (coords[:, 2] - coords[:, 2].min()) / (coords[:, 2].max() - coords[:, 2].min())
 
         return features, coords, scores
 

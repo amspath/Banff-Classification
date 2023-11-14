@@ -13,8 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from banff_dataset import BanffDataset, collate
 from model.transformer import Transformer
-from early_stopping import EarlyStopping
-from utils.custom_losses import custom_banff_loss
+from utils.early_stopping import EarlyStopping
+from utils.custom_losses import (custom_banff_loss)
 
 
 def set_seed():
@@ -45,7 +45,7 @@ def data_sampling(training_set: BanffDataset, validation_set: BanffDataset, work
 
     train_loader = DataLoader(
         dataset=training_set,
-        batch_size=1,  # model expects one bag of features at the time.
+        batch_size=32,  # model expects one bag of features at the time.
         shuffle=False,
         collate_fn=collate,
         num_workers=workers,
@@ -56,7 +56,7 @@ def data_sampling(training_set: BanffDataset, validation_set: BanffDataset, work
 
     val_loader = DataLoader(
         dataset=validation_set,
-        batch_size=1,  # model expects one bag of features at the time.
+        batch_size=32,  # model expects one bag of features at the time.
         sampler=SequentialSampler(validation_set),
         collate_fn=collate,
         num_workers=workers,
@@ -119,9 +119,13 @@ def run_train_eval_loop(model: Transformer, train_loader: torch.utils.data.DataL
 
         batch_start_time = time.time()
         for batch_idx, (features, coords, scores) in enumerate(train_loader):
+            print(scores)
             data_load_duration = time.time() - batch_start_time
 
-            features, coords, scores = features.to(device), coords.to(device), scores.to(device)
+            features, coords = features.to(device), coords.to(device)
+            for i in range(len(scores)):
+                scores[i] = scores[i].to(device)
+
             predictions = model(features, None)
 
             loss = custom_banff_loss(predictions, scores)
