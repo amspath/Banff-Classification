@@ -59,8 +59,8 @@ class PositionalEncoding2D(nn.Module):
 
 class PositionalEncoding(nn.Module):
     """
-    Implementation of the sinusoid encoding proposed in the paper "Attention is all you need". This can be used to encode
-    the position of the patches in the image, as if they were words in a sentence.
+    Implementation of the sinusoid encoding proposed in the paper "Attention is all you need".
+    This can be used to encode the position of the patches in the image, as if they were words in a sentence.
     """
 
     def __init__(self, encoding_dim: int, max_n_patches: int, device):
@@ -98,8 +98,8 @@ class LearnedPositionalEncoding(nn.Module):
         self.max_n_patches = max_n_patches
         self.pad_index = pad_index
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        positions = self._make_positions(input, self.pad_index)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        positions = self._make_positions(x, self.pad_index)
 
         return self.embedding(positions)
 
