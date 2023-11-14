@@ -1,7 +1,6 @@
 import os
 import typing
 
-import numpy as np
 import h5py
 import torch
 from torch import Tensor
@@ -12,10 +11,11 @@ ATTRIBUTES = ["bx_tma", "bx_atn", "bx_g", "bx_cg", "bx_mm", "bx_i",
               "bx_t", "bx_ti", "bx_ifta", "bx_iifta", "bx_tifta",
               "bx_ptc", "bx_v", "bx_cv", "bx_ah"]
 ORDINAL_ATTRIBUTES = ["bx_g", "bx_cg", "bx_mm", "bx_i", "bx_t", "bx_iifta", "bx_tifta",
-                      "bx_ptc", "bx_v", "bx_cv", "bx_ah"]
-ATTRIBUTES_WITH_MISSING = ["bx_px_v", "bx_px_cv"]
-BINARY_ATTRIBUTES = ["bx_tma", "bx_atn"]
-CONTINUOUS_ATTRIBUTES = ["bx_ti", "bx_ifta"]
+                      "bx_ptc", "bx_v", "bx_cv", "bx_ah"]  # 11 attributes with 4 possible values, equal to 44
+ATTRIBUTES_WITH_MISSING = ["bx_px_v", "bx_px_cv"]  # 2 attributes with 5 possible values, equal to 10
+BINARY_ATTRIBUTES = ["bx_tma", "bx_atn"]  # 2 attributes with 1 possible value, equal to 2
+CONTINUOUS_ATTRIBUTES = ["bx_ti", "bx_ifta"]  # 2 attributes with continuous values, equal to 2
+#  Total number of "classes": 58
 
 
 # |-------------------------------------------------------------------|
@@ -99,7 +99,8 @@ class BanffDataset(Dataset):
     Dataset class for the Banff lesion scores.
     """
 
-    def __init__(self, data_dir: str, banff_scores_csv_filepath: str, device: torch.device):
+    def __init__(self, data_dir: str, banff_scores_csv_filepath: str, device: torch.device,
+                 slides_to_load: typing.List[str] = None):
         """
         :param data_dir: The directory containing the feature bags, i.e. the h5 files of the slides.
         :param banff_scores_csv_filepath: The path to the csv file containing the Banff scores.
@@ -108,6 +109,9 @@ class BanffDataset(Dataset):
         self.banff.set_index("PATIENT_ID", inplace=True)
         self.data_dir = data_dir
         self.device = device
+
+        if slides_to_load is not None:
+            self.banff = self.banff.loc[slides_to_load]
 
     def __getitem__(self, idx) -> typing.Tuple[Tensor, Tensor, Tensor]:
         patient_id = self.banff.index[idx]
