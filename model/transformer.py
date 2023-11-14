@@ -61,7 +61,7 @@ class Transformer(nn.Module):
 
         return x
 
-    def forward_head(self, x):
+    def forward_head(self, x: torch.Tensor) -> torch.Tensor:
         x = x[:, 0]
 
         return self.head(x)
