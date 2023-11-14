@@ -17,6 +17,7 @@ class EarlyStopping:
         self.best_score = None
         self.early_stop = False
         self.val_loss_min = np.Inf
+        self.best_epoch = 0
 
     def __call__(self, epoch: int, val_loss: float):
 
@@ -31,4 +32,5 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
+            self.best_epoch = epoch
             self.counter = 0
