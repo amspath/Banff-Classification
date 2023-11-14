@@ -1,0 +1,15 @@
+model_hyperparameters:
+  input_dim: 2048,
+  embedding_dim: 768,
+  depth: 2,
+  num_heads: 8,
+  mlp_ratio: 4.0,
+
+training_parameters:
+  max_epochs: 1000
+  initial_lr: 0.003
+  cosine_annealing_n_iters: 100
+  cosine_annealing_min_lr: 0.0001
+  adam_weight_decay: 0.000001
+  early_stopping_min_epochs: 100
+  early_stopping_patience: 10
