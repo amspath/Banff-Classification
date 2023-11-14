@@ -25,11 +25,8 @@ class PositionalEncoding2D(nn.Module):
         self.max_x_dim = max_x_dim
         self.max_y_dim = max_y_dim
 
-        self.encoding = torch.zeros(max_x_dim, max_y_dim, encoding_dim, device=device)
+        self.encoding = torch.zeros(max_x_dim, max_y_dim, encoding_dim * 2, device=device)
         self.encoding.requires_grad = False
-
-        self.projector = nn.Linear(encoding_dim, encoding_dim)  # This way it can be trained
-        self.relu = nn.ReLU()
 
         encoding_x = torch.zeros((max_x_dim, encoding_dim), device=device).float()
         encoding_y = torch.zeros((max_y_dim, encoding_dim), device=device).float()
@@ -50,17 +47,14 @@ class PositionalEncoding2D(nn.Module):
 
         for i in range(max_x_dim):
             for j in range(max_y_dim):
-                self.encoding[i, j, :] = (encoding_x[i, :] + torch.flip(encoding_y[j, :], dims=[0]))
+                self.encoding[i, j, :] = torch.cat((encoding_x[i, :], encoding_y[j, :]), dim=0)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         # Convert the coordinates to int, making sure it's a torch tensor
-        x = x * (self.max_x_dim - 1)
-        y = y * (self.max_y_dim - 1)
+        x = (x * (self.max_x_dim - 1)).long()
+        y = (y * (self.max_y_dim - 1)).long()
 
-        x = x.long()
-        y = y.long()
-
-        return self.relu(self.projector(self.encoding[x, y, :]))
+        return self.encoding[x, y, :]
 
 
 class PositionalEncoding(nn.Module):
@@ -90,11 +84,13 @@ class PositionalEncoding(nn.Module):
         self.encoding[:, 0::2] = torch.sin(pos / (10000 ** (_2i / encoding_dim)))
         self.encoding[:, 1::2] = torch.cos(pos / (10000 ** (_2i / encoding_dim)))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len = x.size()
+
         return self.encoding[:seq_len, :]
 
 
+# todo(gbuzzanca): test this learned positional encoding
 class LearnedPositionalEncoding(nn.Module):
     def __init__(self, max_n_patches: int, encoding_dim: int, pad_index: int) -> None:
         super().__init__()
@@ -102,16 +98,18 @@ class LearnedPositionalEncoding(nn.Module):
         self.max_n_patches = max_n_patches
         self.pad_index = pad_index
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         positions = self._make_positions(input, self.pad_index)
+
         return self.embedding(positions)
 
-    def max_positions(self):
+    def max_positions(self) -> int:
         if self.pad_index is not None:
             return self.num_embeddings - self.pad_index - 1
         else:
             return self.num_embeddings
 
-    def _make_positions(self, tensor, pad_index: int):
+    def _make_positions(self, tensor, pad_index: int) -> torch.Tensor:
         masked = tensor.ne(pad_index).long()
+
         return torch.cumsum(masked, dim=1) * masked + pad_index
