@@ -1,9 +1,9 @@
 model_hyperparameters:
-  input_dim: 2048,
-  embedding_dim: 768,
-  depth: 2,
-  num_heads: 8,
-  mlp_ratio: 4.0,
+  input_dim: 2048
+  embedding_dim: 768
+  depth: 2
+  num_heads: 8
+  mlp_ratio: 4.0
 
 training_parameters:
   max_epochs: 1000
