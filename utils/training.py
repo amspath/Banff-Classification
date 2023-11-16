@@ -78,9 +78,12 @@ def evaluate_model(model: torch.nn.Module, loader: torch.utils.data.DataLoader, 
 
     avg_loss = 0.0
     with torch.no_grad():
-        for batch_idx, (features, coords, scores) in enumerate(loader):
-            features, coords, scores = features.to(device), coords.to(device), scores.to(device)
-            predictions = model(features, None)
+        for batch_idx, (features, masks, coords, scores) in enumerate(loader):
+            features, masks, coords = features.to(device), masks.to(device), coords.to(device)
+            for i in range(len(scores)):
+                scores[i] = scores[i].to(device)
+
+            predictions = model(features, coords=None, mask=masks)
             loss = custom_banff_loss(predictions, scores)
             avg_loss += loss.item()
 
@@ -118,15 +121,15 @@ def run_train_eval_loop(model: Transformer, train_loader: torch.utils.data.DataL
         train_loss = 0.0
 
         batch_start_time = time.time()
-        for batch_idx, (features, coords, scores) in enumerate(train_loader):
+        for batch_idx, (features, masks, coords, scores) in enumerate(train_loader):
             print(scores)
             data_load_duration = time.time() - batch_start_time
 
-            features, coords = features.to(device), coords.to(device)
+            features, masks, coords = features.to(device), masks.to(device), coords.to(device)
             for i in range(len(scores)):
                 scores[i] = scores[i].to(device)
 
-            predictions = model(features, None)
+            predictions = model(features, coords=None, mask=masks)
 
             loss = custom_banff_loss(predictions, scores)
             train_loss += loss.item()
