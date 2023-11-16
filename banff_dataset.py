@@ -16,6 +16,8 @@ ORDINAL_ATTRIBUTES = ["bx_g", "bx_cg", "bx_mm", "bx_i", "bx_t", "bx_iifta", "bx_
 ATTRIBUTES_WITH_MISSING = ["bx_px_v", "bx_px_cv"]  # 2 attributes with 5 possible values, equal to 10
 BINARY_ATTRIBUTES = ["bx_tma", "bx_atn"]  # 2 attributes with 1 possible value, equal to 2
 CONTINUOUS_ATTRIBUTES = ["bx_ti", "bx_ifta"]  # 2 attributes with continuous values, equal to 2
+
+
 #  Total number of "classes": 58
 
 
@@ -73,21 +75,22 @@ def transform_scores(scores: pd.Series) -> typing.List:
     return labels
 
 
-def collate(batch: typing.List) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+def collate(batch: typing.List) -> typing.Tuple[Tensor, Tensor, Tensor, typing.List[Tensor]]:
     """
     Collate function for the Banff dataset. This function is used by the PyTorch DataLoader.
     :param batch: A list of tuples containing the features, coordinates and labels.
     :return: A tuple containing the features, coordinates and labels of the batch all together as tensors.
     """
     features = torch.cat([item[0] for item in batch], dim=0)
-    coords = torch.cat([item[1] for item in batch], dim=0)
+    masks = torch.cat([item[1] for item in batch], dim=0)
+    coords = torch.cat([item[2] for item in batch], dim=0)
 
     # The labels are lists of tensors, so we need to concatenate them separately
     labels = []
-    for i in range(len(batch[0][2])):
-        labels.append(torch.cat([item[2][i] for item in batch], dim=0))
+    for i in range(len(batch[0][3])):
+        labels.append(torch.cat([item[3][i] for item in batch], dim=0))
 
-    return features, coords, labels
+    return features, masks, coords, labels
 
 
 def get_feature_bag_path(data_dir: str, slide_id: str) -> str:
@@ -99,7 +102,8 @@ class BanffDataset(Dataset):
     Dataset class for the Banff lesion scores.
     """
 
-    def __init__(self, data_dir: str, banff_scores_csv_filepath: str, slides_to_load: typing.List[str] = None):
+    def __init__(self, data_dir: str, banff_scores_csv_filepath: str, slides_to_load: typing.List[str] = None,
+                 max_sequence_length: int = 512):
         """
         :param data_dir: The directory containing the feature bags, i.e. the h5 files of the slides.
         :param banff_scores_csv_filepath: The path to the csv file containing the Banff scores.
@@ -107,11 +111,12 @@ class BanffDataset(Dataset):
         self.banff = pd.read_csv(banff_scores_csv_filepath, delimiter=",")
         self.banff.set_index("PATIENT_ID", inplace=True)
         self.data_dir = data_dir
+        self.max_sequence_length = max_sequence_length
 
         if slides_to_load is not None:
             self.banff = self.banff.loc[slides_to_load]
 
-    def __getitem__(self, idx) -> typing.Tuple[Tensor, Tensor, typing.List[Tensor]]:
+    def __getitem__(self, idx) -> typing.Tuple[Tensor, Tensor, Tensor, typing.List[Tensor]]:
         patient_id = self.banff.index[idx]
         scores = self.banff.loc[patient_id, ATTRIBUTES]
         scores = transform_scores(scores)
@@ -122,13 +127,21 @@ class BanffDataset(Dataset):
             coords = hdf5_file["coords"][:]
 
         features = torch.from_numpy(np.expand_dims(features, axis=0)).float()
+        # Pad the features to the maximum sequence length or truncate them if they are longer
+        # But before store also the mask for the transformer
+        mask = torch.ones(features.shape[0], dtype=torch.bool)
+        mask = torch.nn.functional.pad(mask, (0, self.max_sequence_length - features.shape[0]))
+        features = torch.nn.functional.pad(features, (0, 0, 0, self.max_sequence_length - features.shape[1]))
 
         # Load coordinates as float32 and normalize them to be in the range [0, 1]
         coords = torch.from_numpy(np.expand_dims(coords, axis=0)).float()
         coords[:, 1] = (coords[:, 1] - coords[:, 1].min()) / (coords[:, 1].max() - coords[:, 1].min())
         coords[:, 2] = (coords[:, 2] - coords[:, 2].min()) / (coords[:, 2].max() - coords[:, 2].min())
 
-        return features, coords, scores
+        # Pad the coordinates to the maximum sequence length or truncate them if they are longer
+        coords = torch.nn.functional.pad(coords, (0, 0, 0, self.max_sequence_length - coords.shape[1]))
+
+        return features, mask, coords, scores
 
     def __len__(self) -> int:
         return len(self.banff)
