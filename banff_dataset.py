@@ -82,7 +82,7 @@ def collate(batch: typing.List) -> typing.Tuple[Tensor, Tensor, Tensor, typing.L
     :return: A tuple containing the features, coordinates and labels of the batch all together as tensors.
     """
     features = torch.cat([item[0] for item in batch], dim=0)
-    masks = torch.cat([item[1] for item in batch], dim=0)
+    masks = torch.cat([item[1].unsqueeze(0) for item in batch], dim=0)
     coords = torch.cat([item[2] for item in batch], dim=0)
 
     # The labels are lists of tensors, so we need to concatenate them separately
