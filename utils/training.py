@@ -122,7 +122,6 @@ def run_train_eval_loop(model: Transformer, train_loader: torch.utils.data.DataL
 
         batch_start_time = time.time()
         for batch_idx, (features, masks, coords, scores) in enumerate(train_loader):
-            print(scores)
             data_load_duration = time.time() - batch_start_time
 
             features, masks, coords = features.to(device), masks.to(device), coords.to(device)
