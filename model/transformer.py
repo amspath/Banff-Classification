@@ -1,11 +1,107 @@
+import math
 import typing
 from functools import partial
 from typing import Type
 
 import torch
 import torch.nn as nn
-from timm.models.vision_transformer import Block
+import torch.nn.functional as F
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from timm.models.vision_transformer import LayerScale, DropPath
 from timm.layers.mlp import Mlp
+
+
+class Attention(nn.Module):
+    def __init__(
+            self,
+            dim,
+            num_heads=8,
+            qkv_bias=False,
+            qk_norm=False,
+            attn_drop=0.,
+            proj_drop=0.,
+            norm_layer=nn.LayerNorm,
+    ):
+        super().__init__()
+        assert dim % num_heads == 0, 'dim should be divisible by num_heads'
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim ** -0.5
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim, bias=False)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x, mask=None):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+
+        if mask is not None:
+            mask = mask.unsqueeze(1).repeat(1, self.num_heads, 1, 1)
+
+        x = F.scaled_dot_product_attention(
+            q, k, v,
+            dropout_p=self.attn_drop.p if self.training else 0.,
+            attn_mask=mask
+        )
+
+        x = x.transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+
+class Block(nn.Module):
+
+    def __init__(
+            self,
+            dim,
+            num_heads,
+            mlp_ratio=4.,
+            qkv_bias=False,
+            qk_norm=False,
+            proj_drop=0.,
+            attn_drop=0.,
+            init_values=None,
+            drop_path=0.,
+            act_layer=nn.GELU,
+            norm_layer=nn.LayerNorm,
+            mlp_layer=Mlp,
+    ):
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+        self.attn = Attention(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_norm=qk_norm,
+            attn_drop=attn_drop,
+            proj_drop=proj_drop,
+            norm_layer=norm_layer,
+        )
+        self.ls1 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+        self.norm2 = norm_layer(dim)
+        self.mlp = mlp_layer(
+            in_features=dim,
+            hidden_features=int(dim * mlp_ratio),
+            act_layer=act_layer,
+            drop=proj_drop,
+        )
+        self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+    def forward(self, x, mask=None):
+        x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x), mask=mask)))
+        x = x + self.drop_path
+
+        return x
 
 
 class Transformer(nn.Module):
@@ -36,7 +132,7 @@ class Transformer(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))
 
         self.norm = nn.LayerNorm(embedding_dim, eps=1e-6)
-        self.projection = nn.Sequential(nn.Linear(input_dim, embedding_dim, bias=True), nn.ReLU())
+        self.projection = nn.Sequential(nn.Linear(input_dim, embedding_dim, bias=False), nn.ReLU())
         self.transformer = nn.Sequential(*[
             Block(dim=embedding_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_norm=qk_norm,
                   proj_drop=proj_drop_rate, attn_drop=attn_drop_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
@@ -50,7 +146,8 @@ class Transformer(nn.Module):
         self.positional_encoding = positional_encoding
 
     def forward_features(self, x: torch.Tensor,
-                         coords: typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, torch.Tensor]]) -> torch.Tensor:
+                         coords: typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, torch.Tensor]],
+                         mask: torch.Tensor = None) -> torch.Tensor:
         batch, n_patches, input_size = x.shape
 
         x = self.projection(x)
@@ -62,7 +159,10 @@ class Transformer(nn.Module):
                 x = x + self.positional_encoding(coords)
 
         x = torch.cat((self.cls_token.expand(batch, -1, -1), x), dim=1)
-        x = self.transformer(x)
+        # Modify the mask to account for the cls token
+        if mask is not None:
+            mask = torch.cat((torch.ones(batch, 1, dtype=torch.bool, device=mask.device), mask), dim=1)
+        x = self.transformer(x, mask)
         x = self.norm(x)
 
         return x
@@ -72,9 +172,10 @@ class Transformer(nn.Module):
 
         return [head(x) for head in self.heads]
 
-    def forward(self, x: torch.Tensor, coords: typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, torch.Tensor]]) \
+    def forward(self, x: torch.Tensor, coords: typing.Union[torch.Tensor, typing.Tuple[torch.Tensor, torch.Tensor]],
+                mask: torch.Tensor = None) \
             -> typing.List[torch.Tensor]:
-        x = self.forward_features(x, coords)
+        x = self.forward_features(x, coords, mask)
         x = self.forward_head(x)
 
         return x
