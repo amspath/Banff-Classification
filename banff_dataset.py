@@ -129,8 +129,8 @@ class BanffDataset(Dataset):
         features = torch.from_numpy(np.expand_dims(features, axis=0)).float()
         # Pad the features to the maximum sequence length or truncate them if they are longer
         # But before store also the mask for the transformer
-        mask = torch.ones(features.shape[0], dtype=torch.bool)
-        mask = torch.nn.functional.pad(mask, (0, self.max_sequence_length - features.shape[0]))
+        mask = torch.ones(features.shape[1], dtype=torch.bool)
+        mask = torch.nn.functional.pad(mask, (0, self.max_sequence_length - features.shape[1]))
         features = torch.nn.functional.pad(features, (0, 0, 0, self.max_sequence_length - features.shape[1]))
 
         # Load coordinates as float32 and normalize them to be in the range [0, 1]
