@@ -83,7 +83,7 @@ def evaluate_model(model: torch.nn.Module, loader: torch.utils.data.DataLoader, 
             for i in range(len(scores)):
                 scores[i] = scores[i].to(device)
 
-            predictions = model(features, coords=None, mask=masks)
+            predictions = model(features, coords=None, mask=None)
             loss = custom_banff_loss(predictions, scores)
             avg_loss += loss.item()
 
@@ -128,7 +128,7 @@ def run_train_eval_loop(model: Transformer, train_loader: torch.utils.data.DataL
             for i in range(len(scores)):
                 scores[i] = scores[i].to(device)
 
-            predictions = model(features, coords=None, mask=masks)
+            predictions = model(features, coords=None, mask=None)
 
             loss = custom_banff_loss(predictions, scores)
             train_loss += loss.item()

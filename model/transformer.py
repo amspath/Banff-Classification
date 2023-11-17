@@ -42,12 +42,14 @@ class Attention(nn.Module):
         q, k = self.q_norm(q), self.k_norm(k)
 
         if mask is not None:
-            mask = mask.unsqueeze(1).repeat(1, self.num_heads, 1, 1)
+            mask = mask.unsqueeze(1).unsqueeze(1).expand(-1, self.num_heads, -1, -1)
 
         q = q * self.scale
         attn = q @ k.transpose(-2, -1)
         attn = attn.softmax(dim=-1)
-        attn.masked_fill_(mask.view(attn.size()), -float('Inf'))
+        if mask is not None:
+            mask = mask.unsqueeze(1).unsqueeze(1).expand(-1, self.num_heads, -1, -1)
+            attn.masked_fill_(mask == 0, -float('Inf'))
         x = attn @ v
 
         x = x.transpose(1, 2).reshape(B, N, C)
@@ -97,11 +99,9 @@ class Block(nn.Module):
         self.ls2 = LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, args: typing.Dict[str, typing.Any]):
-        x = args["x"]
-        mask = args["mask"]
+    def forward(self, x, mask=None):
         x = x + self.drop_path1(self.ls1(self.attn(self.norm1(x), mask=mask)))
-        x = x + self.drop_path
+        x = x + self.drop_path2(self.ls2(self.mlp(self.norm2(x))))
 
         return x
 
@@ -135,7 +135,7 @@ class Transformer(nn.Module):
 
         self.norm = nn.LayerNorm(embedding_dim, eps=1e-6)
         self.projection = nn.Sequential(nn.Linear(input_dim, embedding_dim, bias=False), nn.ReLU())
-        self.transformer = nn.Sequential(*[
+        self.transformer = nn.ModuleList([
             Block(dim=embedding_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_norm=qk_norm,
                   proj_drop=proj_drop_rate, attn_drop=attn_drop_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
                   act_layer=nn.GELU, mlp_layer=Mlp) for _ in range(depth)])
@@ -163,9 +163,11 @@ class Transformer(nn.Module):
         x = torch.cat((self.cls_token.expand(batch, -1, -1), x), dim=1)
         # Modify the mask to account for the cls token
         if mask is not None:
-            print(mask)
             mask = torch.cat((torch.ones(batch, 1, dtype=torch.bool, device=mask.device), mask), dim=1)
-        x = self.transformer({"x": x, "mask": mask})
+
+        for block in self.transformer:
+            x = block(x, mask=mask)
+
         x = self.norm(x)
 
         return x

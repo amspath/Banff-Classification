@@ -54,9 +54,9 @@ def transform_scores(scores: pd.Series) -> typing.List:
     # Iterate through all the attributes
     for attribute in ATTRIBUTES:
         if attribute in BINARY_ATTRIBUTES:
-            labels.append(torch.tensor([int(scores[attribute])]))
+            labels.append(torch.tensor([float(scores[attribute])], dtype=torch.float32))
         elif attribute in CONTINUOUS_ATTRIBUTES:
-            labels.append(torch.tensor([scores[attribute] / 100]))
+            labels.append(torch.tensor([scores[attribute] / 100], dtype=torch.float32))
         elif attribute in ORDINAL_ATTRIBUTES:
             # If the attribute is ordinal, we need to perform the one-hot encoding
             # First, we need to check if the attribute can have missing values
@@ -66,9 +66,12 @@ def transform_scores(scores: pd.Series) -> typing.List:
                 if scores[attribute] is None:
                     scores[attribute] = -1
 
-                labels.append(torch.eye(5, dtype=torch.long)[int(scores[attribute]) + 1])
+                labels.append(torch.eye(5, dtype=torch.float32)[int(scores[attribute]) + 1])
             else:
-                labels.append(torch.eye(4, dtype=torch.long)[int(scores[attribute])])
+                # check for nan values
+                if np.isnan(scores[attribute]):
+                    scores[attribute] = 0
+                labels.append(torch.eye(4, dtype=torch.float32)[int(scores[attribute])])
         else:
             raise ValueError(f"Unknown attribute kind {attribute}")
 
@@ -88,7 +91,7 @@ def collate(batch: typing.List) -> typing.Tuple[Tensor, Tensor, Tensor, typing.L
     # The labels are lists of tensors, so we need to concatenate them separately
     labels = []
     for i in range(len(batch[0][3])):
-        labels.append(torch.cat([item[3][i] for item in batch], dim=0))
+        labels.append(torch.cat([item[3][i].unsqueeze(0) for item in batch], dim=0))
 
     return features, masks, coords, labels
 

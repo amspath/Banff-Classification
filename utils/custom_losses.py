@@ -23,7 +23,11 @@ def custom_banff_loss(y_pred: typing.List[torch.Tensor], y_true: typing.List[tor
     :return: The loss.
     """
     # The first 2 attributes are binary, so we use binary cross-entropy
+    print(y_pred[0])
+    print(y_true[0])
     loss = torch.nn.functional.binary_cross_entropy(y_pred[0], y_true[0])
+    print(y_pred[1])
+    print(y_true[1])
     loss += torch.nn.functional.binary_cross_entropy(y_pred[1], y_true[1])
 
     # The next 5 attributes are ordinal, so we use ordinal categorical cross-entropy
